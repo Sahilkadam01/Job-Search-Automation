@@ -1,0 +1,8 @@
+.env
+venv/
+__pycache__/
+*.pyc
+
+job_hunter.db
+candidate_profile.json
+customized_resume.docx
