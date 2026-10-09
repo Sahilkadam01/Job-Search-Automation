@@ -1,3 +1,4 @@
+from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -69,56 +70,113 @@ def health():
     }
 
 
-@app.post("/resume/upload")
-async def upload_resume(
-    file: UploadFile = File(...)
-):
 
-    if file.content_type != "application/pdf":
+# Always save the profile in the backend directory.
+PROFILE_PATH = Path(__file__).resolve().parent.parent / "candidate_profile.json"
+
+
+@app.post("/resume/upload")
+async def upload_resume(file: UploadFile = File(...)):
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
             status_code=400,
-            detail="Only PDF files are allowed."
+            detail="Please upload a PDF file."
         )
 
     file_content = await file.read()
 
+    if not file_content:
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded PDF is empty."
+        )
+
+    if len(file_content) > 10 * 1024 * 1024:
+        raise HTTPException(
+            status_code=413,
+            detail="The PDF must be 10 MB or smaller."
+        )
+
     try:
+        # Step 1: Extract text from the PDF.
+        resume_text = extract_resume_text(file_content)
 
-        resume_text = extract_resume_text(
-            file_content
-        )
-
-        profile = analyze_resume(
-            resume_text
-        )
-
-        with open(
-            "candidate_profile.json",
-            "w",
-            encoding="utf-8"
-        ) as json_file:
-
-            import json
-
-            json.dump(
-                profile,
-                json_file,
-                indent=4,
-                ensure_ascii=False
+        if not resume_text or not resume_text.strip():
+            raise HTTPException(
+                status_code=422,
+                detail="No readable text found in the PDF."
             )
 
+        print("Resume text extracted successfully.")
+
+        # Step 2: Analyze the resume with Gemini.
+        # If this fails, the existing profile stays untouched.
+        profile = analyze_resume(resume_text)
+
+        if not isinstance(profile, dict) or not profile:
+            raise ValueError("The analyzer returned an invalid profile.")
+
+        print("Resume analyzed successfully.")
+
+        # Step 3: Save safely to the correct location.
+        PROFILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = None
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                suffix=".tmp",
+                prefix="candidate_profile_",
+                dir=str(PROFILE_PATH.parent),
+                delete=False
+            ) as temp_file:
+                json.dump(
+                    profile,
+                    temp_file,
+                    indent=4,
+                    ensure_ascii=False
+                )
+                temp_file.write("\n")
+                temp_path = temp_file.name
+
+            # Verify the new file before replacing the old profile.
+            with open(temp_path, "r", encoding="utf-8") as check_file:
+                json.load(check_file)
+
+            os.replace(temp_path, PROFILE_PATH)
+            temp_path = None
+
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
+
+        print(f"Candidate profile saved to: {PROFILE_PATH}")
+
         return {
-            "message": "Resume uploaded and analyzed successfully",
+            "message": "Resume analyzed and profile saved successfully.",
             "filename": file.filename,
+            "profile_path": str(PROFILE_PATH),
             "profile": profile
         }
 
-    except Exception as e:
+    except HTTPException:
+        raise
+
+    except Exception as exc:
+        print(
+            f"RESUME UPLOAD ERROR: "
+            f"{type(exc).__name__}: {exc}"
+        )
 
         raise HTTPException(
             status_code=500,
-            detail=str(e)
-        )
+            detail=f"{type(exc).__name__}: {exc}"
+        ) from exc
+
+    finally:
+        await file.close()
+
 
 @app.get("/jobs")
 def get_jobs(

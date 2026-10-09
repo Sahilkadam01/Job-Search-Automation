@@ -1,174 +1,53 @@
-import {
-  BriefcaseBusiness,
-  Target,
-  FileText,
-  TrendingUp,
-  ArrowRight,
-} from "lucide-react";
-
+import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, BriefcaseBusiness, CheckCircle2, Clock3, FileText, Search, Sparkles, Target, TrendingUp } from "lucide-react";
 import { Link } from "react-router-dom";
+import { api, getErrorMessage, unwrap } from "../api.js";
+import { Badge, EmptyState, ErrorState, Loading, PageHeading, Panel, StatCard, formatDate, pick } from "../components/UI.jsx";
 
-function Dashboard() {
-  return (
-    <div className="mx-auto max-w-7xl space-y-6">
-      {/* Welcome */}
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-        <div className="max-w-2xl">
-          <span className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600">
-            AI Job Hunter
-          </span>
-
-          <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-            Find your next opportunity faster.
-          </h1>
-
-          <p className="mt-3 text-sm leading-6 text-slate-500 sm:text-base">
-            Upload your resume, search jobs, and use AI to discover
-            opportunities that match your skills and experience.
-          </p>
-
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Link
-              to="/resume"
-              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
-            >
-              Upload Resume
-              <ArrowRight size={17} />
-            </Link>
-
-            <Link
-              to="/jobs"
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              Find Jobs
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* Stats */}
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          icon={BriefcaseBusiness}
-          title="Jobs Found"
-          value="0"
-          description="Available opportunities"
-        />
-
-        <StatCard
-          icon={Target}
-          title="Strong Matches"
-          value="0"
-          description="70%+ match score"
-        />
-
-        <StatCard
-          icon={FileText}
-          title="Applications"
-          value="0"
-          description="Tracked applications"
-        />
-
-        <StatCard
-          icon={TrendingUp}
-          title="Average Match"
-          value="0%"
-          description="Your average score"
-        />
-      </section>
-
-      {/* Quick actions */}
-      <section>
-        <h2 className="mb-4 text-lg font-bold text-slate-900">
-          Get started
-        </h2>
-
-        <div className="grid gap-4 md:grid-cols-3">
-          <QuickAction
-            number="01"
-            title="Upload your resume"
-            description="Let AI understand your skills and experience."
-            to="/resume"
-          />
-
-          <QuickAction
-            number="02"
-            title="Search for jobs"
-            description="Find relevant opportunities from job boards."
-            to="/jobs"
-          />
-
-          <QuickAction
-            number="03"
-            title="Track applications"
-            description="Keep your entire job search organized."
-            to="/applications"
-          />
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function StatCard({
-  icon: Icon,
-  title,
-  value,
-  description,
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-          <Icon size={19} />
-        </div>
+export default function Dashboard() {
+  const [jobs, setJobs] = useState([]);
+  const [apps, setApps] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  async function load() {
+    setLoading(true); setError("");
+    const results = await Promise.allSettled([api.get("/jobs"), api.get("/applications")]);
+    if (results[0].status === "fulfilled") {
+      const d = unwrap(results[0].value.data); setJobs(Array.isArray(d) ? d : Array.isArray(d?.jobs) ? d.jobs : []);
+    }
+    if (results[1].status === "fulfilled") {
+      const d = unwrap(results[1].value.data); setApps(Array.isArray(d) ? d : Array.isArray(d?.applications) ? d.applications : []);
+    }
+    if (results.every(r => r.status === "rejected")) setError(getErrorMessage(results[0].reason));
+    setLoading(false);
+  }
+  useEffect(() => { load(); }, []);
+  const interviews = apps.filter(a => /interview|offer/i.test(String(a.status || ""))).length;
+  const applied = apps.filter(a => !/saved|bookmarked/i.test(String(a.status || ""))).length;
+  const recentJobs = useMemo(() => jobs.slice(0, 5), [jobs]);
+  return <>
+    <PageHeading eyebrow="YOUR CAREER, IN ONE PLACE" title={<>Your next opportunity<br/><span className="gradient-text">starts here.</span></>} description="A focused workspace to discover roles, tailor your resume, and stay on top of every application." action={<Link to="/jobs" className="btn btn-primary"><Search size={16}/> Explore jobs <ArrowRight size={16}/></Link>}/>
+    {error && <ErrorState message={error} onRetry={load}/>}
+    {loading ? <Loading label="Syncing your job search…"/> : <>
+      <div className="stats-grid">
+        <StatCard label="Jobs available" value={jobs.length} detail="Listings returned by your API" icon={BriefcaseBusiness}/>
+        <StatCard label="Tracked applications" value={apps.length} detail="Saved in your application tracker" icon={Target} tone="blue"/>
+        <StatCard label="Active applications" value={applied} detail="Excludes saved-only entries" icon={Clock3} tone="orange"/>
+        <StatCard label="Interviews & offers" value={interviews} detail="Based on your current statuses" icon={CheckCircle2} tone="green"/>
       </div>
-
-      <p className="mt-5 text-sm text-slate-500">{title}</p>
-
-      <p className="mt-1 text-2xl font-bold text-slate-900">
-        {value}
-      </p>
-
-      <p className="mt-1 text-xs text-slate-400">
-        {description}
-      </p>
-    </div>
-  );
-}
-
-function QuickAction({
-  number,
-  title,
-  description,
-  to,
-}) {
-  return (
-    <Link
-      to={to}
-      className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:border-blue-200 hover:shadow-md"
-    >
-      <span className="text-xs font-bold text-blue-600">
-        {number}
-      </span>
-
-      <h3 className="mt-4 text-base font-semibold text-slate-900">
-        {title}
-      </h3>
-
-      <p className="mt-2 text-sm leading-6 text-slate-500">
-        {description}
-      </p>
-
-      <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-blue-600">
-        Open
-        <ArrowRight
-          size={14}
-          className="transition-transform group-hover:translate-x-1"
-        />
+      <div className="dashboard-grid">
+        <Panel title="Latest opportunities" subtitle="Fresh listings from your connected job source" action={<Link className="text-link" to="/jobs">View all <ArrowRight size={14}/></Link>}>
+          {recentJobs.length ? <div className="job-list compact">{recentJobs.map((job, i) => <div className="job-row" key={job.id || job.slug || `${pick(job,["title","role"],"Job")}-${i}`}><div className="company-logo">{String(pick(job,["company_name","company","employer"],"J")).slice(0,1).toUpperCase()}</div><div className="job-row-main"><strong>{pick(job,["title","role","position"],"Untitled role")}</strong><span>{pick(job,["company_name","company","employer"],"Company not listed")} · {pick(job,["location"],"Location not listed")}</span></div><Badge kind="purple">{pick(job,["job_type","jobType","employment_type"],"Role")}</Badge></div>)}</div> : <EmptyState title="No job listings yet" message="Use Find jobs to load current listings from your backend." action={<Link className="btn btn-secondary btn-sm" to="/jobs">Find jobs</Link>}/>}
+        </Panel>
+        <Panel title="Application pulse" subtitle="Your tracked progress">
+          <div className="pulse-total"><span>Applications tracked</span><strong>{apps.length}</strong></div>
+          <div className="progress-track"><div className="progress-fill" style={{width: `${apps.length ? Math.min(100, applied / apps.length * 100) : 0}%`}}/></div>
+          <div className="pulse-legend"><span><i className="legend-dot purple-dot"/> Active / applied</span><strong>{applied}</strong></div>
+          <div className="pulse-legend"><span><i className="legend-dot green-dot"/> Interviews / offers</span><strong>{interviews}</strong></div>
+          <Link to="/applications" className="btn btn-secondary full-btn">Open tracker <ArrowRight size={15}/></Link>
+        </Panel>
       </div>
-    </Link>
-  );
+      <section className="workflow-banner"><div className="workflow-orb"><Sparkles size={25}/></div><div className="workflow-copy"><span className="eyebrow">YOUR WORKFLOW</span><h3>From discovery to application.</h3><p>Upload your resume, explore roles, then track each application in one place.</p></div><div className="workflow-steps"><Link to="/resume"><span>01</span><FileText size={17}/> Resume</Link><Link to="/jobs"><span>02</span><Search size={17}/> Discover</Link><Link to="/applications"><span>03</span><TrendingUp size={17}/> Track</Link></div></section>
+    </>}
+  </>;
 }
-
-export default Dashboard;

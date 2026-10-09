@@ -1,15 +1,25 @@
-function Applications() {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-8">
-      <h1 className="text-2xl font-bold text-slate-900">
-        Applications
-      </h1>
+import { useEffect, useMemo, useState } from "react";
+import { ArrowUpRight, BriefcaseBusiness, CalendarDays, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { api, getErrorMessage, unwrap } from "../api.js";
+import { Badge, EmptyState, ErrorState, Loading, PageHeading, Panel, Toast, formatDate, pick } from "../components/UI.jsx";
 
-      <p className="mt-2 text-slate-500">
-        Application tracker will be built next.
-      </p>
-    </div>
-  );
+const STATUSES=["Saved","Applied","Assessment","Interview","Offer","Rejected"];
+function normalizeStatus(s){const x=String(s||"saved").toLowerCase();return STATUSES.find(v=>v.toLowerCase()===x)||"Saved";}
+export default function Applications(){
+ const [items,setItems]=useState([]);const [loading,setLoading]=useState(true);const [error,setError]=useState("");const [query,setQuery]=useState("");const [toast,setToast]=useState(null);const [showForm,setShowForm]=useState(false);const [saving,setSaving]=useState(false);
+ const [form,setForm]=useState({company:"",job_title:"",status:"Applied",job_url:"",notes:"",applied_date:new Date().toISOString().slice(0,10)});
+ async function load(){setLoading(true);setError("");try{const r=await api.get("/applications");const d=unwrap(r.data);setItems(Array.isArray(d)?d:Array.isArray(d?.applications)?d.applications:[]);}catch(e){setError(getErrorMessage(e));}finally{setLoading(false);}}
+ useEffect(()=>{load();},[]);
+ const filtered=useMemo(()=>items.filter(a=>[a.company,a.company_name,a.job_title,a.title,a.position,a.status].filter(Boolean).join(" ").toLowerCase().includes(query.toLowerCase())),[items,query]);
+ async function add(e){e.preventDefault();setSaving(true);try{const payload={...form,title:form.job_title,company_name:form.company};const r=await api.post("/applications",payload);setItems(old=>[r.data?.application||r.data,...old]);setShowForm(false);setForm({company:"",job_title:"",status:"Applied",job_url:"",notes:"",applied_date:new Date().toISOString().slice(0,10)});setToast({type:"success",message:"Application saved."});await load();}catch(e){setToast({type:"error",message:getErrorMessage(e)});}finally{setSaving(false);}}
+ async function updateStatus(item,status){const id=item.id??item.application_id;if(id==null){setToast({type:"error",message:"This application has no ID, so it cannot be updated."});return;}try{await api.put(`/applications/${id}`,{...item,status});setItems(old=>old.map(a=>(a.id??a.application_id)===id?{...a,status}:a));setToast({type:"success",message:"Application status updated."});}catch(e){setToast({type:"error",message:getErrorMessage(e)});}}
+ async function remove(item){const id=item.id??item.application_id;if(id==null){setToast({type:"error",message:"This application has no ID, so it cannot be deleted."});return;}if(!window.confirm("Delete this application from your tracker?"))return;try{await api.delete(`/applications/${id}`);setItems(old=>old.filter(a=>(a.id??a.application_id)!==id));setToast({type:"success",message:"Application deleted."});}catch(e){setToast({type:"error",message:getErrorMessage(e)});}}
+ return <>
+  <PageHeading eyebrow="KEEP EVERY OPPORTUNITY MOVING" title={<>Application <span className="gradient-text">tracker.</span></>} description="Manage your pipeline from saved roles to interviews and offers." action={<button className="btn btn-primary" onClick={()=>setShowForm(v=>!v)}><Plus size={16}/>{showForm?"Close form":"Add application"}</button>}/>
+  {showForm&&<Panel title="Add an application" subtitle="Save a job to your personal tracker"><form className="application-form" onSubmit={add}><label>Company<input required value={form.company} onChange={e=>setForm({...form,company:e.target.value})} placeholder="e.g. Acme Inc."/></label><label>Job title<input required value={form.job_title} onChange={e=>setForm({...form,job_title:e.target.value})} placeholder="e.g. Frontend Developer"/></label><label>Status<select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>{STATUSES.map(s=><option key={s}>{s}</option>)}</select></label><label>Date applied<input type="date" value={form.applied_date} onChange={e=>setForm({...form,applied_date:e.target.value})}/></label><label className="form-wide">Job URL<input type="url" value={form.job_url} onChange={e=>setForm({...form,job_url:e.target.value})} placeholder="https://…"/></label><label className="form-wide">Notes<textarea rows="2" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} placeholder="Recruiter, follow-up date, notes…"/></label><div className="form-wide form-actions"><button className="btn btn-primary" disabled={saving}>{saving?"Saving…":"Save application"}</button><button type="button" className="btn btn-secondary" onClick={()=>setShowForm(false)}>Cancel</button></div></form></Panel>}
+  <div className="tracker-toolbar"><div className="search-field"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search companies or roles…"/></div><button className="btn btn-secondary" onClick={load}><RefreshCw size={15}/> Refresh</button></div>
+  <div className="tracker-summary">{STATUSES.map(s=><div key={s} className="tracker-count"><span>{s}</span><strong>{items.filter(a=>normalizeStatus(a.status)===s).length}</strong></div>)}</div>
+  {loading?<Loading label="Loading applications…"/>:error?<ErrorState message={error} onRetry={load}/>:filtered.length?<div className="panel tracker-panel"><div className="table-wrap"><table className="applications-table"><thead><tr><th>Role / company</th><th>Date</th><th>Status</th><th>Job link</th><th></th></tr></thead><tbody>{filtered.map((a,i)=>{const id=a.id??a.application_id??i;const status=normalizeStatus(a.status);const title=pick(a,["job_title","title","position","role"],"Untitled role");const company=pick(a,["company","company_name","employer"],"Company");return <tr key={id}><td><div className="table-job"><div className="company-logo">{String(company).slice(0,1).toUpperCase()}</div><div><strong>{title}</strong><span>{company}</span></div></div></td><td><span className="date-cell"><CalendarDays size={14}/>{formatDate(pick(a,["applied_date","created_at","date"],""))}</span></td><td><select className={`status-select status-${status.toLowerCase()}`} value={status} onChange={e=>updateStatus(a,e.target.value)} aria-label={`Status for ${title}`}>{STATUSES.map(s=><option key={s}>{s}</option>)}</select></td><td>{a.job_url||a.url?<a className="table-link" href={a.job_url||a.url} target="_blank" rel="noreferrer">Open <ArrowUpRight size={13}/></a>:"—"}</td><td><button className="icon-button danger-icon" onClick={()=>remove(a)} aria-label={`Delete ${title}`}><Trash2 size={16}/></button></td></tr>})}</tbody></table></div></div>:<EmptyState icon={BriefcaseBusiness} title="Your tracker is ready" message={items.length?"No applications match your search.":"Add your first application to start tracking your progress."} action={<button className="btn btn-primary btn-sm" onClick={()=>setShowForm(true)}><Plus size={15}/> Add application</button>}/>}
+  <Toast toast={toast} onClose={()=>setToast(null)}/>
+ </>;
 }
-
-export default Applications;
