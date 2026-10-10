@@ -1,6 +1,15 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
-  theme: { extend: { colors: { primary: "#2563EB", secondary: "#0EA5E9", success: "#10B981", warning: "#F59E0B" } } },
-  plugins: [],
+  content: [
+    "./index.html",
+    "./src/**/*.{js,jsx,ts,tsx}"
+  ],
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"]
+      }
+    }
+  },
+  plugins: []
 };

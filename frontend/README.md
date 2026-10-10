@@ -1,43 +1,16 @@
-# AI Job Hunter — Frontend
+# React + Vite
 
-Responsive React dashboard for the existing FastAPI backend.
+This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
-## Requirements
-- Node.js 20 or newer
-- Python backend running locally at `http://127.0.0.1:8000`
+Currently, two official plugins are available:
 
-## Setup
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-Open a terminal in this `frontend` directory and run:
+## React Compiler
 
-```powershell
-npm install
-Copy-Item .env.example .env
-npm run dev
-```
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-If `Copy-Item` says the file already exists, that is fine. To use a different API address, edit `.env`:
+## Expanding the Oxlint configuration
 
-```env
-VITE_API_BASE_URL=http://127.0.0.1:8000
-```
-
-Restart `npm run dev` after editing `.env`.
-
-## Pages
-- Dashboard: live backend status, jobs, application count and match score overview
-- Find Jobs: fetch/filter jobs, request resume matching, save a role to the tracker, open the original listing
-- My Resume: upload a PDF, retain the extracted profile in this browser, export/clear profile JSON
-- Applications: list, add, update status, and delete tracker entries through the backend
-- AI Resume: customize a resume for a selected job and download the generated DOCX
-- Automation: manually call the existing `/jobs/auto-save` backend workflow
-- Settings: save local display/workflow preferences and view the configured API URL
-
-## Run the backend
-From the backend folder:
-
-```powershell
-uvicorn app.main:app --reload
-```
-
-Open `http://127.0.0.1:8000/docs` to inspect the backend API. AI actions depend on the backend provider quota and may return an error if the Gemini quota is exhausted. This frontend does not automatically submit applications to employers.
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
