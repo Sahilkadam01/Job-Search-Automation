@@ -1,48 +1,43 @@
 # AI Job Hunter — Frontend
 
-Premium dark React dashboard wired to the existing FastAPI backend.
+Responsive React dashboard for the existing FastAPI backend.
 
-## Run locally
+## Requirements
+- Node.js 20 or newer
+- Python backend running locally at `http://127.0.0.1:8000`
 
-1. Open a terminal in the `frontend` folder.
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Copy `.env.example` to `.env` if you want to configure the API URL. The default is `http://127.0.0.1:8000`.
-4. Start Vite:
-   ```bash
-   npm run dev
-   ```
-5. Ensure FastAPI is running in the backend folder:
-   ```bash
-   uvicorn app.main:app --reload
-   ```
+## Setup
 
-Frontend: `http://localhost:5173`  
-Backend Swagger: `http://127.0.0.1:8000/docs`
+Open a terminal in this `frontend` directory and run:
 
-## Included pages
+```powershell
+npm install
+Copy-Item .env.example .env
+npm run dev
+```
 
-- Overview: real `/jobs`, `/applications`, `/health` data
-- Find jobs: fetch/filter listings, open original links, call `POST /jobs/auto-save`
-- Resume studio: upload PDF to `POST /resume/upload`, inspect response/profile, call resume customize/generate endpoints
-- Applications: create/list/update/delete using `/applications` endpoints
+If `Copy-Item` says the file already exists, that is fine. To use a different API address, edit `.env`:
 
-## Important API notes
-
-This frontend uses the endpoint paths discussed in the project. The exact request/response schema of some endpoints may differ from the current backend implementation. If an endpoint returns a validation error (422), open `/docs`, compare the expected schema, then adjust the request payload in `src/pages/Applications.jsx` or `src/pages/Resume.jsx`. The UI surfaces backend errors rather than faking success.
-
-The `/jobs/auto-save` request currently sends `{ "job": <job object> }`. If your endpoint expects a different payload, adjust `saveJob` in `src/pages/Jobs.jsx`.
-
-Gemini-dependent features can return quota errors until the Google AI quota resets. The UI will show the actual error and remain usable for the non-AI features.
-
-## API URL
-
-Create a `frontend/.env` file:
 ```env
 VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
-Restart Vite after changing environment variables.
 
-If frontend and backend are hosted on different origins, configure CORS in FastAPI for your frontend URL.
+Restart `npm run dev` after editing `.env`.
+
+## Pages
+- Dashboard: live backend status, jobs, application count and match score overview
+- Find Jobs: fetch/filter jobs, request resume matching, save a role to the tracker, open the original listing
+- My Resume: upload a PDF, retain the extracted profile in this browser, export/clear profile JSON
+- Applications: list, add, update status, and delete tracker entries through the backend
+- AI Resume: customize a resume for a selected job and download the generated DOCX
+- Automation: manually call the existing `/jobs/auto-save` backend workflow
+- Settings: save local display/workflow preferences and view the configured API URL
+
+## Run the backend
+From the backend folder:
+
+```powershell
+uvicorn app.main:app --reload
+```
+
+Open `http://127.0.0.1:8000/docs` to inspect the backend API. AI actions depend on the backend provider quota and may return an error if the Gemini quota is exhausted. This frontend does not automatically submit applications to employers.

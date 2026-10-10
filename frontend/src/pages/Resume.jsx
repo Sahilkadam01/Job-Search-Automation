@@ -1,77 +1,14 @@
-import { useRef, useState } from "react";
-import { ArrowDownToLine, CheckCircle2, FileText, FileUp, LoaderCircle, RefreshCw, Sparkles, UploadCloud } from "lucide-react";
-import { api, getErrorMessage } from "../api.js";
-import { PageHeading, Panel, Toast } from "../components/UI.jsx";
+import { useState } from "react";
+import { FileText, UploadCloud, CheckCircle2, Download, Trash2 } from "lucide-react";
+import { uploadResume } from "../api/api";
+import { ErrorMessage, SuccessMessage } from "../components/Feedback";
+import { getErrorMessage } from "../utils";
 
-function downloadBlob(data, filename) {
-  const url = URL.createObjectURL(data); const a = document.createElement("a");
-  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-}
 export default function Resume() {
-  const inputRef = useRef(null); const [file,setFile] = useState(null); const [profile,setProfile] = useState(null); const [uploadResult,setUploadResult] = useState(null);
-  const [busy,setBusy] = useState(""); const [error,setError] = useState(""); const [toast,setToast] = useState(null);
-  function chooseFile(f) { if (!f) return; if (f.type !== "application/pdf" && !f.name.toLowerCase().endsWith(".pdf")) {setError("Please select a PDF file.");return;} setError("");setFile(f); }
-  async function upload() {
-    if (!file) {setError("Choose a PDF resume first.");return;}
-    const form = new FormData(); form.append("file",file);
-    setBusy("upload");setError("");setUploadResult(null);
-    try {
-      const r = await api.post("/resume/upload",form,{headers:{"Content-Type":"multipart/form-data"}});
-      setUploadResult(r.data); const candidate = r.data?.profile || r.data?.candidate_profile || r.data?.analysis || r.data?.data?.profile;
-      if (candidate) setProfile(candidate);
-      setToast({type:"success",message:"Resume uploaded and the backend responded."});
-    } catch(e) {
-      setError(getErrorMessage(e));
-      if (/429|quota|resource_exhausted|limit/i.test(JSON.stringify(e?.response?.data||e?.message||""))) setToast({type:"error",message:"Gemini quota may be exhausted. The upload request reached an AI-dependent step; try again after quota resets."});
-    } finally {setBusy("");}
-  }
-  async function runAction(kind) {
-    setBusy(kind);setError("");
-    try {
-      if(kind==="customize") {
-        const r=await api.post("/resume/customize",{resume_text:uploadResult?.text || uploadResult?.resume_text || "", profile, job_description:""});
-        setProfile(r.data?.profile || r.data?.resume || r.data);setToast({type:"success",message:"Resume customization completed."});
-      } else {
-        const r=await api.post("/resume/generate",{profile});
-        if(r.data instanceof Blob) downloadBlob(r.data,"tailored-resume.docx");
-        else if(r.data?.download_url) window.open(r.data.download_url,"_blank","noopener,noreferrer");
-        else if(r.data?.content) downloadBlob(new Blob([r.data.content]),"tailored-resume.docx");
-        else setToast({type:"success",message:"Resume generation endpoint responded. Check the response details below."});
-        setUploadResult(prev=>({...prev,generation_response:r.data}));
-      }
-    } catch(e){setError(getErrorMessage(e));} finally{setBusy("");}
-  }
-  const profileEntries = profile && typeof profile==="object" ? Object.entries(profile) : [];
-  return <>
-    <PageHeading eyebrow="YOUR CAREER FOUNDATION" title={<>Resume <span className="gradient-text">studio.</span></>} description="Upload your PDF, review the profile extracted by your backend, and use your resume endpoints when AI quota is available."/>
-    <div className="resume-layout">
-      <div className="resume-main-column">
-        <Panel title="Upload your resume" subtitle="PDF only · Your file is sent to your local FastAPI backend">
-          <div className={`upload-dropzone ${file?"has-file":""}`} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();chooseFile(e.dataTransfer.files?.[0]);}} onClick={()=>inputRef.current?.click()} role="button" tabIndex={0} onKeyDown={e=>e.key==="Enter"&&inputRef.current?.click()}>
-            <input ref={inputRef} type="file" accept=".pdf,application/pdf" hidden onChange={e=>chooseFile(e.target.files?.[0])}/>
-            <div className="upload-icon"><UploadCloud size={26}/></div><strong>{file ? file.name : "Drop your resume here"}</strong><span>{file ? `${(file.size/1024/1024).toFixed(2)} MB · Ready to upload` : "or click to browse your files"}</span><small>PDF format · Recommended under 10 MB</small>
-          </div>
-          <div className="upload-actions"><button className="btn btn-primary" disabled={!file||!!busy} onClick={e=>{e.stopPropagation();upload();}}>{busy==="upload"?<><LoaderCircle size={16} className="spin"/> Uploading…</>:<><FileUp size={16}/> Upload & analyze</>}</button><button className="btn btn-secondary" disabled={!file||!!busy} onClick={()=>{setFile(null);setError("");}}>Clear file</button></div>
-          {error && <div className="inline-error">{error}</div>}
-          <div className="note-box"><Sparkles size={17}/><span>AI-dependent analysis can fail while Gemini's free-tier quota is exhausted. This screen will show the backend's actual response rather than pretend analysis succeeded.</span></div>
-        </Panel>
-        <Panel title="Candidate profile" subtitle="The profile returned by your resume analysis endpoint" action={profile && <button className="btn btn-secondary btn-sm" onClick={()=>downloadBlob(new Blob([JSON.stringify(profile,null,2)],{type:"application/json"}),"candidate-profile.json")}><ArrowDownToLine size={14}/> Export JSON</button>}>
-          {profileEntries.length ? <div className="profile-fields">{profileEntries.map(([key,val])=><div className="profile-field" key={key}><span>{key.replace(/_/g," ")}</span><strong>{Array.isArray(val)?val.join(", "):typeof val==="object"?JSON.stringify(val):String(val ?? "—")}</strong></div>)}</div> : <div className="profile-empty"><FileText size={25}/><strong>Your profile will appear here</strong><span>Upload a resume after your API and AI quota are ready.</span></div>}
-          {uploadResult && <details className="response-details"><summary>View raw API response</summary><pre>{JSON.stringify(uploadResult,null,2)}</pre></details>}
-        </Panel>
-      </div>
-      <div className="resume-side-column">
-        <Panel title="Resume tools" subtitle="Uses your existing backend endpoints">
-          <div className="tool-item"><div className="tool-item-icon"><Sparkles size={18}/></div><div><strong>Customize resume</strong><p>Tailor your resume content for a specific job. Add job description support to the form once the endpoint schema is confirmed.</p></div><button className="icon-button" disabled={!profile||!!busy} onClick={()=>runAction("customize")} title="Customize resume"><RefreshCw size={16}/></button></div>
-          <div className="tool-item"><div className="tool-item-icon blue"><FileText size={18}/></div><div><strong>Generate document</strong><p>Request a downloadable resume from your backend generator.</p></div><button className="icon-button" disabled={!profile||!!busy} onClick={()=>runAction("generate")} title="Generate resume">{busy==="generate"?<LoaderCircle className="spin" size={16}/>:<ArrowDownToLine size={16}/>}</button></div>
-        </Panel>
-        <Panel title="Pipeline status" subtitle="What is ready to use">
-          <div className="pipeline-line"><span className="pipeline-check"><CheckCircle2 size={16}/></span><div><strong>PDF upload UI</strong><small>Ready</small></div><span className="pipeline-badge">Ready</span></div>
-          <div className="pipeline-line"><span className="pipeline-check"><CheckCircle2 size={16}/></span><div><strong>FastAPI integration</strong><small>Uses /resume/upload</small></div><span className="pipeline-badge">Connected</span></div>
-          <div className="pipeline-line"><span className="pipeline-wait">3</span><div><strong>AI profile analysis</strong><small>Requires available Gemini quota</small></div><span className="pipeline-badge waiting">AI</span></div>
-        </Panel>
-      </div>
-    </div>
-    <Toast toast={toast} onClose={()=>setToast(null)}/>
-  </>;
+ const [file,setFile]=useState(null);const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [success,setSuccess]=useState("");const [profile,setProfile]=useState(()=>{try{return JSON.parse(localStorage.getItem("ai-job-hunter-profile")||"null")}catch{return null}});const [filename,setFilename]=useState(localStorage.getItem("ai-job-hunter-resume-name")||"");
+ const handleUpload=async(e)=>{e.preventDefault();if(!file){setError("Choose a PDF resume first.");return;}if(file.type!=="application/pdf"&&!file.name.toLowerCase().endsWith(".pdf")){setError("Only PDF resumes are supported.");return;}setBusy(true);setError("");setSuccess("");try{const data=await uploadResume(file);const nextProfile=data?.profile||data?.resume_profile||data?.candidate_profile||data?.analysis||data?.data?.profile||data;localStorage.setItem("ai-job-hunter-profile",JSON.stringify(nextProfile));localStorage.setItem("ai-job-hunter-resume-name",file.name);setProfile(nextProfile);setFilename(file.name);setSuccess(data?.message||"Resume uploaded and analyzed successfully.");setFile(null);e.target.reset();}catch(err){setError(getErrorMessage(err));}finally{setBusy(false);}};
+ const clearProfile=()=>{localStorage.removeItem("ai-job-hunter-profile");localStorage.removeItem("ai-job-hunter-resume-name");setProfile(null);setFilename("");setSuccess("Saved local resume profile cleared.");setError("");};
+ const downloadProfile=()=>{const blob=new Blob([JSON.stringify(profile,null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="candidate-profile.json";a.click();URL.revokeObjectURL(url);};
+ return <div className="mx-auto max-w-5xl space-y-5"><div><h1 className="text-2xl font-bold text-slate-900">My resume</h1><p className="mt-1 text-sm text-slate-500">Upload a PDF to let the backend extract and analyze your candidate profile.</p></div><ErrorMessage>{error}</ErrorMessage><SuccessMessage>{success}</SuccessMessage><div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]"><section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><UploadCloud size={21}/></div><div><h2 className="font-bold text-slate-900">Upload resume</h2><p className="text-xs text-slate-500">PDF format · Keep your latest version</p></div></div><form onSubmit={handleUpload} className="mt-6 space-y-4"><label className="flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-5 text-center transition hover:border-blue-400 hover:bg-blue-50/50"><FileText size={30} className="text-blue-600"/><span className="mt-3 text-sm font-semibold text-slate-800">{file?file.name:"Choose your PDF resume"}</span><span className="mt-1 text-xs text-slate-500">Click to browse your computer</span><input type="file" accept="application/pdf,.pdf" className="sr-only" onChange={e=>{setFile(e.target.files?.[0]||null);setError("");}}/></label><button type="submit" disabled={busy||!file} className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{busy?"Uploading and analyzing…":"Upload and analyze resume"}</button><p className="text-xs leading-5 text-slate-400">AI analysis requires an available Gemini API quota. If the backend reports a quota error, the PDF may have uploaded but analysis can fail.</p></form>{filename&&<div className="mt-5 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3"><CheckCircle2 size={18} className="mt-0.5 text-emerald-600"/><div className="min-w-0"><p className="text-sm font-semibold text-emerald-800">Current saved resume</p><p className="break-all text-xs text-emerald-700">{filename}</p></div></div>}</section>
+ <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-slate-900">Extracted candidate profile</h2><p className="mt-1 text-xs text-slate-500">Used by AI matching and resume customization.</p></div>{profile&&<div className="flex gap-2"><button onClick={downloadProfile} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"><Download size={14}/> Export JSON</button><button onClick={clearProfile} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50"><Trash2 size={14}/> Clear</button></div>}</div>{profile?<pre className="mt-5 max-h-[480px] overflow-auto rounded-xl bg-slate-950 p-4 text-xs leading-5 text-emerald-200">{JSON.stringify(profile,null,2)}</pre>:<div className="mt-5 rounded-xl border border-dashed border-slate-300 px-5 py-12 text-center"><FileText size={30} className="mx-auto text-slate-300"/><p className="mt-3 text-sm font-semibold text-slate-700">No profile saved yet</p><p className="mt-1 text-xs text-slate-500">Upload your PDF to populate this panel.</p></div>}</section></div></div>;
 }

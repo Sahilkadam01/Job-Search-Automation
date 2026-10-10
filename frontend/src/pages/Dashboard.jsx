@@ -1,53 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, BriefcaseBusiness, CheckCircle2, Clock3, FileText, Search, Sparkles, Target, TrendingUp } from "lucide-react";
+import { useEffect, useState } from "react";
+import { BriefcaseBusiness, Target, FileText, TrendingUp, ArrowRight, RefreshCw, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
-import { api, getErrorMessage, unwrap } from "../api.js";
-import { Badge, EmptyState, ErrorState, Loading, PageHeading, Panel, StatCard, formatDate, pick } from "../components/UI.jsx";
+import { checkBackendHealth, getJobs, getApplications } from "../api/api";
+import { unwrapList, jobTitle, companyName, matchScore, getErrorMessage } from "../utils";
+import { ErrorMessage, Loading } from "../components/Feedback";
 
 export default function Dashboard() {
-  const [jobs, setJobs] = useState([]);
-  const [apps, setApps] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  async function load() {
-    setLoading(true); setError("");
-    const results = await Promise.allSettled([api.get("/jobs"), api.get("/applications")]);
-    if (results[0].status === "fulfilled") {
-      const d = unwrap(results[0].value.data); setJobs(Array.isArray(d) ? d : Array.isArray(d?.jobs) ? d.jobs : []);
-    }
-    if (results[1].status === "fulfilled") {
-      const d = unwrap(results[1].value.data); setApps(Array.isArray(d) ? d : Array.isArray(d?.applications) ? d.applications : []);
-    }
-    if (results.every(r => r.status === "rejected")) setError(getErrorMessage(results[0].reason));
-    setLoading(false);
-  }
+  const [health, setHealth] = useState("checking"); const [jobs, setJobs] = useState([]); const [applications, setApplications] = useState([]); const [loading, setLoading] = useState(true); const [error, setError] = useState("");
+  const load = async () => { setLoading(true); setError(""); const results = await Promise.allSettled([checkBackendHealth(), getJobs("", 50), getApplications()]); if (results[0].status === "fulfilled") setHealth("online"); else setHealth("offline"); if (results[1].status === "fulfilled") setJobs(unwrapList(results[1].value)); if (results[2].status === "fulfilled") setApplications(unwrapList(results[2].value)); const failed = results.find(r => r.status === "rejected"); if (failed) setError(getErrorMessage(failed.reason)); setLoading(false); };
   useEffect(() => { load(); }, []);
-  const interviews = apps.filter(a => /interview|offer/i.test(String(a.status || ""))).length;
-  const applied = apps.filter(a => !/saved|bookmarked/i.test(String(a.status || ""))).length;
-  const recentJobs = useMemo(() => jobs.slice(0, 5), [jobs]);
-  return <>
-    <PageHeading eyebrow="YOUR CAREER, IN ONE PLACE" title={<>Your next opportunity<br/><span className="gradient-text">starts here.</span></>} description="A focused workspace to discover roles, tailor your resume, and stay on top of every application." action={<Link to="/jobs" className="btn btn-primary"><Search size={16}/> Explore jobs <ArrowRight size={16}/></Link>}/>
-    {error && <ErrorState message={error} onRetry={load}/>}
-    {loading ? <Loading label="Syncing your job search…"/> : <>
-      <div className="stats-grid">
-        <StatCard label="Jobs available" value={jobs.length} detail="Listings returned by your API" icon={BriefcaseBusiness}/>
-        <StatCard label="Tracked applications" value={apps.length} detail="Saved in your application tracker" icon={Target} tone="blue"/>
-        <StatCard label="Active applications" value={applied} detail="Excludes saved-only entries" icon={Clock3} tone="orange"/>
-        <StatCard label="Interviews & offers" value={interviews} detail="Based on your current statuses" icon={CheckCircle2} tone="green"/>
-      </div>
-      <div className="dashboard-grid">
-        <Panel title="Latest opportunities" subtitle="Fresh listings from your connected job source" action={<Link className="text-link" to="/jobs">View all <ArrowRight size={14}/></Link>}>
-          {recentJobs.length ? <div className="job-list compact">{recentJobs.map((job, i) => <div className="job-row" key={job.id || job.slug || `${pick(job,["title","role"],"Job")}-${i}`}><div className="company-logo">{String(pick(job,["company_name","company","employer"],"J")).slice(0,1).toUpperCase()}</div><div className="job-row-main"><strong>{pick(job,["title","role","position"],"Untitled role")}</strong><span>{pick(job,["company_name","company","employer"],"Company not listed")} · {pick(job,["location"],"Location not listed")}</span></div><Badge kind="purple">{pick(job,["job_type","jobType","employment_type"],"Role")}</Badge></div>)}</div> : <EmptyState title="No job listings yet" message="Use Find jobs to load current listings from your backend." action={<Link className="btn btn-secondary btn-sm" to="/jobs">Find jobs</Link>}/>}
-        </Panel>
-        <Panel title="Application pulse" subtitle="Your tracked progress">
-          <div className="pulse-total"><span>Applications tracked</span><strong>{apps.length}</strong></div>
-          <div className="progress-track"><div className="progress-fill" style={{width: `${apps.length ? Math.min(100, applied / apps.length * 100) : 0}%`}}/></div>
-          <div className="pulse-legend"><span><i className="legend-dot purple-dot"/> Active / applied</span><strong>{applied}</strong></div>
-          <div className="pulse-legend"><span><i className="legend-dot green-dot"/> Interviews / offers</span><strong>{interviews}</strong></div>
-          <Link to="/applications" className="btn btn-secondary full-btn">Open tracker <ArrowRight size={15}/></Link>
-        </Panel>
-      </div>
-      <section className="workflow-banner"><div className="workflow-orb"><Sparkles size={25}/></div><div className="workflow-copy"><span className="eyebrow">YOUR WORKFLOW</span><h3>From discovery to application.</h3><p>Upload your resume, explore roles, then track each application in one place.</p></div><div className="workflow-steps"><Link to="/resume"><span>01</span><FileText size={17}/> Resume</Link><Link to="/jobs"><span>02</span><Search size={17}/> Discover</Link><Link to="/applications"><span>03</span><TrendingUp size={17}/> Track</Link></div></section>
-    </>}
-  </>;
+  const scored = jobs.map(matchScore).filter(v => v !== null); const strong = scored.filter(v => v >= 70).length; const avg = scored.length ? Math.round(scored.reduce((a,b)=>a+b,0)/scored.length) : 0;
+  return <div className="mx-auto max-w-7xl space-y-6">
+    <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"><div className="pointer-events-none absolute -right-12 -top-16 h-64 w-64 rounded-full bg-blue-100 blur-3xl"/><div className="relative max-w-2xl"><span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700"><Sparkles size={14}/> AI Job Hunter</span><h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Your next opportunity starts here.</h1><p className="mt-3 text-sm leading-6 text-slate-500 sm:text-base">Manage your resume, discover relevant jobs, and keep every application organized from one workspace.</p><div className="mt-6 flex flex-wrap gap-3"><Link to="/resume" className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700">Upload Resume <ArrowRight size={17}/></Link><Link to="/jobs" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Explore Jobs</Link><button onClick={load} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"><RefreshCw size={15}/> Refresh</button></div><p className={`mt-4 text-xs font-semibold ${health === "online" ? "text-emerald-600" : health === "offline" ? "text-rose-600" : "text-slate-500"}`}>● Backend {health === "online" ? "connected" : health === "offline" ? "not reachable" : "checking…"}</p></div></section>
+    <ErrorMessage>{error}</ErrorMessage>
+    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><StatCard icon={BriefcaseBusiness} title="Jobs Found" value={loading ? "—" : jobs.length} description="Available opportunities"/><StatCard icon={Target} title="Strong Matches" value={loading ? "—" : strong} description="70% or higher match score"/><StatCard icon={FileText} title="Applications" value={loading ? "—" : applications.length} description="Tracked applications"/><StatCard icon={TrendingUp} title="Average Match" value={loading ? "—" : `${avg}%`} description="Across jobs with a score"/></section>
+    <section><div className="mb-4 flex items-center justify-between"><div><h2 className="text-lg font-bold text-slate-900">Recently discovered jobs</h2><p className="mt-1 text-sm text-slate-500">Latest roles returned by your backend.</p></div><Link to="/jobs" className="text-sm font-semibold text-blue-600 hover:text-blue-700">View all <span aria-hidden="true">→</span></Link></div>{loading ? <Loading label="Loading your job dashboard…"/> : jobs.length ? <div className="grid gap-3 md:grid-cols-2">{jobs.slice(0,4).map((job,i)=><div key={job.id ?? job.job_id ?? `${jobTitle(job)}-${i}`} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-slate-900">{jobTitle(job)}</h3><p className="mt-1 text-sm text-slate-500">{companyName(job)}</p></div>{matchScore(job)!==null&&<span className="rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">{matchScore(job)}% match</span>}</div><p className="mt-3 line-clamp-2 text-sm text-slate-500">{job.description || job.summary || "Open the job listing to review the full description and requirements."}</p></div>)}</div> : <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">No jobs returned yet. Open Find Jobs to refresh the job feed.</div>}</section>
+    <section><h2 className="mb-4 text-lg font-bold text-slate-900">Get started</h2><div className="grid gap-4 md:grid-cols-3"><QuickAction number="01" title="Upload your resume" description="Extract your experience and skills for matching." to="/resume"/><QuickAction number="02" title="Find matching jobs" description="Search roles and open original application links." to="/jobs"/><QuickAction number="03" title="Track applications" description="Update stages and keep your pipeline organized." to="/applications"/></div></section>
+  </div>;
 }
+function StatCard({icon:Icon,title,value,description}) { return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><Icon size={19}/></div><p className="mt-5 text-sm text-slate-500">{title}</p><p className="mt-1 text-2xl font-bold text-slate-900">{value}</p><p className="mt-1 text-xs text-slate-400">{description}</p></div>; }
+function QuickAction({number,title,description,to}) { return <Link to={to} className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:border-blue-200 hover:shadow-md"><span className="text-xs font-bold text-blue-600">{number}</span><h3 className="mt-4 text-base font-semibold text-slate-900">{title}</h3><p className="mt-2 text-sm leading-6 text-slate-500">{description}</p><div className="mt-4 flex items-center gap-1 text-xs font-semibold text-blue-600">Open <ArrowRight size={14} className="transition-transform group-hover:translate-x-1"/></div></Link>; }
