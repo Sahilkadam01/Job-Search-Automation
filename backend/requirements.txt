@@ -7,4 +7,5 @@ openai
 sqlalchemy
 google-genai
 python-docx
+APScheduler
 
