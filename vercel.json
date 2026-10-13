@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "services": {
     "frontend": {
-      "root": "ai-job-hunter-frontend",
+      "root": "frontend",
       "framework": "vite"
     },
     "backend": {
