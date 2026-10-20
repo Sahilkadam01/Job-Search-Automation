@@ -1,243 +1,375 @@
 
-import { useEffect, useMemo, useState } from "react";
-import { Search, MapPin, BriefcaseBusiness, ExternalLink, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  BriefcaseBusiness,
+  RefreshCw,
+  Search,
+  Sparkles,
+} from "lucide-react";
+
 import { fetchJobs } from "../services/api";
+import JobCard from "../components/jobs/JobCard";
+import JobFilters from "../components/jobs/JobFilters";
+import JobDetailsModal from "../components/jobs/JobDetailsModal";
 
-function getJobUrl(job) {
-  const value = job.url || job.job_url || job.apply_url || job.link;
+const SAVED_JOBS_KEY = "ai-job-hunter-saved-jobs";
 
-  if (!value) return null;
+function normalizeJobs(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.jobs)) return data.jobs;
+  if (Array.isArray(data?.results)) return data.results;
+  if (Array.isArray(data?.data)) return data.data;
+  return [];
+}
 
+function getJobId(job) {
+  return (
+    job.id ||
+    job.job_id ||
+    job.url ||
+    job.job_url ||
+    `${job.title || "job"}-${job.company || job.company_name || ""}`
+  );
+}
+
+function readSavedJobs() {
   try {
-    const url = new URL(value);
-    return ["http:", "https:"].includes(url.protocol) ? url.href : null;
+    const value = localStorage.getItem(SAVED_JOBS_KEY);
+    const parsed = value ? JSON.parse(value) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return null;
+    return [];
   }
 }
 
 export default function FindJobs() {
   const [jobs, setJobs] = useState([]);
-  const [search, setSearch] = useState("");
-  const [location, setLocation] = useState("");
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
-  async function loadJobs() {
-    setLoading(true);
+  const [search, setSearch] = useState("");
+  const [location, setLocation] = useState("");
+  const [jobType, setJobType] = useState("");
+  const [minMatch, setMinMatch] = useState(0);
+
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [savedIds, setSavedIds] = useState(
+    () => new Set(readSavedJobs().map(getJobId))
+  );
+
+  const loadJobs = useCallback(async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
     setError("");
 
     try {
       const response = await fetchJobs();
-
-      const items = Array.isArray(response)
-        ? response
-        : response?.jobs || response?.data || response?.results || [];
-
-      if (!Array.isArray(items)) {
-        throw new Error("The API returned an unexpected jobs format.");
-      }
-
-      setJobs(items);
+      setJobs(normalizeJobs(response));
     } catch (err) {
       setError(
-        err.response?.data?.detail ||
-          err.message ||
-          "Could not load jobs. Check whether the backend is running."
+        err?.response?.data?.detail ||
+          err?.message ||
+          "Unable to load jobs. Please check that the backend is running."
       );
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     loadJobs();
-  }, []);
+  }, [loadJobs]);
 
   const filteredJobs = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const place = location.trim().toLowerCase();
+    const searchText = search.trim().toLowerCase();
+    const locationText = location.trim().toLowerCase();
 
     return jobs.filter((job) => {
-      const title = job.title || job.role || job.job_title || "";
-      const company = job.company || job.company_name || "";
-      const description = job.description || "";
-      const jobLocation = job.location || job.job_location || "";
+      const title = String(job.title || "").toLowerCase();
+      const company = String(
+        job.company || job.company_name || ""
+      ).toLowerCase();
+      const description = String(job.description || "").toLowerCase();
+      const jobLocation = String(job.location || "").toLowerCase();
+
+      const type = String(
+        job.job_type || job.employment_type || ""
+      ).toLowerCase();
+
+      const score = Number(job.match_score ?? 0);
 
       const matchesSearch =
-        !query ||
-        `${title} ${company} ${description}`.toLowerCase().includes(query);
+        !searchText ||
+        `${title} ${company} ${description}`.includes(searchText);
 
       const matchesLocation =
-        !place || jobLocation.toLowerCase().includes(place);
+        !locationText || jobLocation.includes(locationText);
 
-      return matchesSearch && matchesLocation;
+      const normalizedType = jobType.toLowerCase();
+      const matchesType =
+        !normalizedType ||
+        type.includes(normalizedType) ||
+        (normalizedType === "remote" &&
+          jobLocation.includes("remote"));
+
+      const matchesScore = score >= Number(minMatch);
+
+      return (
+        matchesSearch &&
+        matchesLocation &&
+        matchesType &&
+        matchesScore
+      );
     });
-  }, [jobs, search, location]);
+  }, [jobs, search, location, jobType, minMatch]);
+
+  function resetFilters() {
+    setSearch("");
+    setLocation("");
+    setJobType("");
+    setMinMatch(0);
+  }
+
+  function toggleSavedJob(job) {
+    const jobId = getJobId(job);
+    const currentJobs = readSavedJobs();
+    const alreadySaved = currentJobs.some(
+      (item) => getJobId(item) === jobId
+    );
+
+    const updatedJobs = alreadySaved
+      ? currentJobs.filter((item) => getJobId(item) !== jobId)
+      : [...currentJobs, job];
+
+    try {
+      localStorage.setItem(
+        SAVED_JOBS_KEY,
+        JSON.stringify(updatedJobs)
+      );
+
+      setSavedIds(new Set(updatedJobs.map(getJobId)));
+    } catch {
+      setError("Unable to save this job in browser storage.");
+    }
+  }
+
+  function handleApply(job) {
+    // This callback records the user's intent in the console.
+    // It does not submit an application to the employer.
+    console.info("Job application link opened:", job.title);
+  }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <div>
-        <p className="text-sm font-semibold text-violet-600">
-          Job Discovery
-        </p>
-        <h1 className="mt-2 text-2xl font-bold text-slate-900 sm:text-3xl">
-          Find Jobs
-        </h1>
-        <p className="mt-2 text-sm text-slate-500 sm:text-base">
-          Search and explore opportunities from your job database.
-        </p>
-      </div>
+    <main className="space-y-6">
+      {/* Page heading */}
+      <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <div className="flex items-center gap-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+              <BriefcaseBusiness size={21} />
+            </div>
 
-      <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-[1fr_1fr_auto]">
-        <div className="relative">
-          <Search
-            size={18}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-          />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Job title, company, or keyword"
-            className="w-full rounded-xl border border-slate-200 py-3 pl-10 pr-3 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-          />
-        </div>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+              Find Jobs
+            </h1>
+          </div>
 
-        <div className="relative">
-          <MapPin
-            size={18}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-          />
-          <input
-            value={location}
-            onChange={(event) => setLocation(event.target.value)}
-            placeholder="Filter by location"
-            className="w-full rounded-xl border border-slate-200 py-3 pl-10 pr-3 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-          />
+          <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">
+            Discover opportunities, explore AI resume matches, and save
+            the jobs you want to revisit.
+          </p>
         </div>
 
         <button
           type="button"
-          onClick={loadJobs}
-          disabled={loading}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:opacity-60"
+          onClick={() => loadJobs(true)}
+          disabled={loading || refreshing}
+          className="inline-flex items-center justify-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-violet-200 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto"
         >
-          <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-          Refresh
+          <RefreshCw
+            size={16}
+            className={refreshing ? "animate-spin" : ""}
+          />
+          Refresh Jobs
         </button>
-      </div>
+      </section>
 
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">
-          {loading ? "Loading jobs..." : `${filteredJobs.length} jobs found`}
-        </p>
-      </div>
+      {/* Summary */}
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-medium text-slate-500">
+            Available jobs
+          </p>
+          <p className="mt-2 text-3xl font-bold text-slate-900">
+            {loading ? "—" : jobs.length}
+          </p>
+        </div>
 
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-medium text-slate-500">
+            Matching filters
+          </p>
+          <p className="mt-2 text-3xl font-bold text-violet-700">
+            {loading ? "—" : filteredJobs.length}
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-medium text-slate-500">
+            Saved jobs
+          </p>
+          <p className="mt-2 text-3xl font-bold text-emerald-600">
+            {savedIds.size}
+          </p>
+        </div>
+      </section>
+
+      {/* Filters */}
+      <JobFilters
+        search={search}
+        onSearchChange={setSearch}
+        location={location}
+        onLocationChange={setLocation}
+        jobType={jobType}
+        onJobTypeChange={setJobType}
+        minMatch={minMatch}
+        onMinMatchChange={setMinMatch}
+        onReset={resetFilters}
+      />
+
+      {/* Error message */}
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          <p className="font-semibold">Unable to load jobs</p>
-          <p className="mt-1">{error}</p>
+        <div
+          role="alert"
+          className="flex flex-col gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p>{error}</p>
           <button
             type="button"
-            onClick={loadJobs}
-            className="mt-3 font-semibold underline"
+            onClick={() => loadJobs()}
+            className="shrink-0 font-semibold underline"
           >
             Try again
           </button>
         </div>
       )}
 
-      {loading && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center text-sm text-slate-500">
-          Fetching jobs from your backend...
-        </div>
-      )}
-
-      {!loading && !error && filteredJobs.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center">
-          <BriefcaseBusiness
-            size={36}
-            className="mx-auto text-slate-300"
-          />
-          <h2 className="mt-4 text-lg font-semibold text-slate-800">
-            No jobs found
+      {/* Results heading */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">
+            Job opportunities
           </h2>
-          <p className="mt-2 text-sm text-slate-500">
-            Try different search terms or check whether your backend has saved jobs.
+          <p className="mt-1 text-sm text-slate-500">
+            {loading
+              ? "Loading available jobs..."
+              : `${filteredJobs.length} result${filteredJobs.length === 1 ? "" : "s"} found`}
           </p>
         </div>
-      )}
 
-      {!loading && !error && filteredJobs.length > 0 && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700">
+          <Sparkles size={14} />
+          AI-powered matching
+        </span>
+      </div>
+
+      {/* Loading state */}
+      {loading ? (
+        <div className="grid gap-4 xl:grid-cols-2">
+          {[1, 2, 3, 4].map((item) => (
+            <div
+              key={item}
+              className="animate-pulse rounded-2xl border border-slate-200 bg-white p-6"
+            >
+              <div className="h-5 w-2/3 rounded bg-slate-200" />
+              <div className="mt-3 h-4 w-1/3 rounded bg-slate-100" />
+              <div className="mt-6 h-4 w-full rounded bg-slate-100" />
+              <div className="mt-2 h-4 w-4/5 rounded bg-slate-100" />
+              <div className="mt-6 h-10 w-32 rounded-xl bg-slate-200" />
+            </div>
+          ))}
+        </div>
+      ) : filteredJobs.length > 0 ? (
+        <div className="grid gap-4 xl:grid-cols-2">
           {filteredJobs.map((job, index) => {
-            const title =
-              job.title || job.role || job.job_title || "Untitled position";
-            const company =
-              job.company || job.company_name || "Company not specified";
-            const jobLocation =
-              job.location || job.job_location || "Location not specified";
-            const url = getJobUrl(job);
-            const key = job.id || job.job_id || `${title}-${company}-${index}`;
+            const jobId = getJobId(job);
 
             return (
-              <article
-                key={key}
-                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
-                    <BriefcaseBusiness size={22} />
-                  </div>
+              <div key={`${jobId}-${index}`} className="relative">
+                <JobCard
+                  job={job}
+                  onSave={toggleSavedJob}
+                  onApply={handleApply}
+                />
 
-                  <div className="min-w-0 flex-1">
-                    <h2 className="font-semibold text-slate-900">
-                      {title}
-                    </h2>
-                    <p className="mt-1 text-sm text-slate-600">
-                      {company}
-                    </p>
-                  </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedJob(job)}
+                  className="mt-2 inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold text-violet-700 transition hover:bg-violet-50"
+                >
+                  <Search size={15} />
+                  View full details
+                </button>
 
-                  {job.match_score != null && (
-                    <span className="shrink-0 rounded-lg bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
-                      {Math.round(Number(job.match_score))}% match
-                    </span>
-                  )}
-                </div>
-
-                <p className="mt-4 flex items-center gap-2 text-sm text-slate-500">
-                  <MapPin size={15} />
-                  {jobLocation}
-                </p>
-
-                {job.description && (
-                  <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-600">
-                    {job.description}
-                  </p>
+                {savedIds.has(jobId) && (
+                  <span className="absolute right-4 top-4 rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+                    Saved
+                  </span>
                 )}
-
-                <div className="mt-5 border-t border-slate-100 pt-4">
-                  {url ? (
-                    <a
-                      href={url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-700"
-                    >
-                      View Job <ExternalLink size={15} />
-                    </a>
-                  ) : (
-                    <span className="text-xs text-slate-400">
-                      No job application link provided
-                    </span>
-                  )}
-                </div>
-              </article>
+              </div>
             );
           })}
         </div>
+      ) : (
+        <section className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-50 text-violet-600">
+            <Search size={25} />
+          </div>
+
+          <h3 className="mt-4 text-lg font-bold text-slate-900">
+            {jobs.length === 0
+              ? "No jobs available yet"
+              : "No jobs match your filters"}
+          </h3>
+
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+            {jobs.length === 0
+              ? "The backend returned no job listings. Check your job-fetching service or try refreshing."
+              : "Try changing your keywords, location, employment type, or minimum match score."}
+          </p>
+
+          <div className="mt-5 flex flex-wrap justify-center gap-3">
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Clear filters
+            </button>
+
+            <button
+              type="button"
+              onClick={() => loadJobs(true)}
+              className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700"
+            >
+              Refresh jobs
+            </button>
+          </div>
+        </section>
       )}
-    </div>
+
+      <JobDetailsModal
+        job={selectedJob}
+        isOpen={Boolean(selectedJob)}
+        onClose={() => setSelectedJob(null)}
+        onApply={handleApply}
+      />
+    </main>
   );
 }
