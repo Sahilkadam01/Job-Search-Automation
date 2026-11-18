@@ -1,14 +1,25 @@
 
 import { useState, useEffect } from "react";
+
 import AuthPage from "./components/auth/AuthPage";
 import api from "./services/api";
 
-// Keep your existing page and layout imports.
+// Layout
+import AppLayout from "./components/layout/AppLayout";
+
+// Pages
+import Dashboard from "./pages/Dashboard";
+import FindJobs from "./pages/FindJobs";
+import Resume from "./pages/Resume";
+import Applications from "./pages/Applications";
+import Settings from "./pages/Settings";
 
 function App() {
   const [user, setUser] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
+  const [activePage, setActivePage] = useState("Dashboard");
 
+  // Check existing login session
   useEffect(() => {
     let isMounted = true;
 
@@ -16,7 +27,9 @@ function App() {
       const token = localStorage.getItem("access_token");
 
       if (!token) {
-        if (isMounted) setCheckingSession(false);
+        if (isMounted) {
+          setCheckingSession(false);
+        }
         return;
       }
 
@@ -34,7 +47,6 @@ function App() {
           error.response?.data || error.message
         );
 
-        // Clear only when the server confirms the token is invalid.
         if (
           error.response?.status === 401 ||
           error.response?.status === 403
@@ -55,20 +67,26 @@ function App() {
     };
   }, []);
 
+  // Login / Register success
   const handleAuthSuccess = (loggedInUser) => {
     setUser(loggedInUser);
+    setActivePage("Dashboard");
   };
 
+  // Logout
   const handleLogout = () => {
     localStorage.removeItem("access_token");
     setUser(null);
+    setActivePage("Dashboard");
   };
 
+  // Loading screen
   if (checkingSession) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f5f6f8]">
         <div className="text-center">
-          <div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-gray-200 border-t-[#315b96]" />
+          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-blue-600" />
+
           <p className="mt-4 text-sm text-gray-500">
             Checking your session...
           </p>
@@ -77,19 +95,44 @@ function App() {
     );
   }
 
+  // Show authentication page
   if (!user) {
     return <AuthPage onAuthSuccess={handleAuthSuccess} />;
   }
 
-  // IMPORTANT:
-  // Keep your existing AppLayout and page rendering here.
-  // Pass handleLogout to your logout button.
+  // Render selected page
+  const renderPage = () => {
+    switch (activePage) {
+      case "Dashboard":
+        return <Dashboard />;
 
+      case "Find Jobs":
+        return <FindJobs />;
+
+      case "Resume":
+        return <Resume />;
+
+      case "Applications":
+        return <Applications />;
+
+      case "Settings":
+        return <Settings />;
+
+      default:
+        return <Dashboard />;
+    }
+  };
+
+  // Authenticated application
   return (
-    <div>
-      <h1>Welcome, {user.name}</h1>
-      <button onClick={handleLogout}>Logout</button>
-    </div>
+    <AppLayout
+      activePage={activePage}
+      onNavigate={setActivePage}
+      onLogout={handleLogout}
+      user={user}
+    >
+      {renderPage()}
+    </AppLayout>
   );
 }
 
