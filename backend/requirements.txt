@@ -8,4 +8,5 @@ sqlalchemy
 google-genai
 python-docx
 APScheduler
+email-validator
 
