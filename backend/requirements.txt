@@ -1,3 +1,4 @@
+
 fastapi
 uvicorn
 python-dotenv
@@ -9,4 +10,7 @@ google-genai
 python-docx
 APScheduler
 email-validator
+python-jose[cryptography]
+pwdlib[argon2]
+
 
