@@ -1,10 +1,13 @@
-import { Menu, Settings } from "lucide-react";
+
+import { Menu, Settings, LogOut } from "lucide-react";
 
 export default function Topbar({
   activePage,
   backendStatus = "checking",
   onOpenMenu,
   onNavigate,
+  user,
+  onLogout,
 }) {
   const statusStyles = {
     checking: "border-amber-200 bg-amber-50 text-amber-700",
@@ -28,8 +31,11 @@ export default function Topbar({
     ? backendStatus
     : "checking";
 
+  const displayName = user?.name || user?.email || "User";
+
   return (
-    <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-30 flex min-h-20 flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 bg-white/90 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-8">
+
       <div className="flex min-w-0 items-center gap-3">
         <button
           type="button"
@@ -44,24 +50,43 @@ export default function Topbar({
           <p className="text-xs font-medium text-slate-400">
             Workspace
           </p>
+
           <h1 className="truncate text-lg font-bold text-slate-900">
             {activePage}
           </h1>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+
+        {/* Backend status */}
         <div
           role="status"
           aria-live="polite"
           className={`hidden items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold sm:flex ${statusStyles[status]}`}
         >
-          <span
-            className={`h-2 w-2 rounded-full ${dotStyles[status]}`}
-          />
+          <span className={`h-2 w-2 rounded-full ${dotStyles[status]}`} />
           {statusLabels[status]}
         </div>
 
+        {/* Welcome user */}
+        <div className="hidden items-center gap-2 sm:flex">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100 text-sm font-bold text-violet-700">
+            {displayName.charAt(0).toUpperCase()}
+          </div>
+
+          <div className="max-w-32">
+            <p className="text-xs text-slate-400">
+              Welcome back
+            </p>
+
+            <p className="truncate text-sm font-semibold text-slate-800">
+              {displayName}
+            </p>
+          </div>
+        </div>
+
+        {/* Settings */}
         <button
           type="button"
           onClick={() => onNavigate("Settings")}
@@ -70,6 +95,17 @@ export default function Topbar({
           <Settings size={17} />
           <span className="hidden sm:inline">Settings</span>
         </button>
+
+        {/* Logout */}
+        <button
+          type="button"
+          onClick={onLogout}
+          className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-100"
+        >
+          <LogOut size={17} />
+          <span>Logout</span>
+        </button>
+
       </div>
     </header>
   );

@@ -22,6 +22,7 @@ export default function Sidebar({
   onNavigate,
   mobileOpen,
   onClose,
+  user,
 }) {
   return (
     <>
@@ -35,9 +36,8 @@ export default function Sidebar({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200 bg-white transition-transform duration-200 lg:translate-x-0 ${
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200 bg-white transition-transform duration-200 lg:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
       >
         <div className="flex h-20 shrink-0 items-center justify-between border-b border-slate-100 px-5">
           <div className="flex items-center gap-3">
@@ -84,11 +84,10 @@ export default function Sidebar({
                 type="button"
                 aria-current={isActive ? "page" : undefined}
                 onClick={() => onNavigate(label)}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium transition ${
-                  isActive
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium transition ${isActive
                     ? "bg-violet-50 text-violet-700"
                     : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                }`}
+                  }`}
               >
                 <Icon size={19} />
                 <span>{label}</span>
@@ -131,10 +130,11 @@ export default function Sidebar({
 
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-slate-800">
-                Job Seeker
+                {user?.name || user?.email || "Job Seeker"}
               </p>
+
               <p className="truncate text-xs text-slate-500">
-                Career workspace
+                {user?.email || "Career workspace"}
               </p>
             </div>
 

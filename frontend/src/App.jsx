@@ -4,10 +4,8 @@ import { useState, useEffect } from "react";
 import AuthPage from "./components/auth/AuthPage";
 import api from "./services/api";
 
-// Layout
 import AppLayout from "./components/layout/AppLayout";
 
-// Pages
 import Dashboard from "./pages/Dashboard";
 import FindJobs from "./pages/FindJobs";
 import Resume from "./pages/Resume";
@@ -18,8 +16,9 @@ function App() {
   const [user, setUser] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
   const [activePage, setActivePage] = useState("Dashboard");
+  const [backendStatus, setBackendStatus] = useState("checking");
 
-  // Check existing login session
+  // Verify login session
   useEffect(() => {
     let isMounted = true;
 
@@ -27,9 +26,7 @@ function App() {
       const token = localStorage.getItem("access_token");
 
       if (!token) {
-        if (isMounted) {
-          setCheckingSession(false);
-        }
+        if (isMounted) setCheckingSession(false);
         return;
       }
 
@@ -67,7 +64,34 @@ function App() {
     };
   }, []);
 
-  // Login / Register success
+  // Check backend connection
+  useEffect(() => {
+    let isMounted = true;
+
+    const checkBackend = async () => {
+      try {
+        await api.get("/health", { timeout: 15000 });
+
+        if (isMounted) {
+          setBackendStatus("connected");
+        }
+      } catch (error) {
+        console.error("Backend health check failed:", error);
+
+        if (isMounted) {
+          setBackendStatus("disconnected");
+        }
+      }
+    };
+
+    checkBackend();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Successful login or registration
   const handleAuthSuccess = (loggedInUser) => {
     setUser(loggedInUser);
     setActivePage("Dashboard");
@@ -80,7 +104,7 @@ function App() {
     setActivePage("Dashboard");
   };
 
-  // Loading screen
+  // Session loading
   if (checkingSession) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f5f6f8]">
@@ -95,12 +119,12 @@ function App() {
     );
   }
 
-  // Show authentication page
+  // Authentication page
   if (!user) {
     return <AuthPage onAuthSuccess={handleAuthSuccess} />;
   }
 
-  // Render selected page
+  // Dashboard pages
   const renderPage = () => {
     switch (activePage) {
       case "Dashboard":
@@ -109,6 +133,7 @@ function App() {
       case "Find Jobs":
         return <FindJobs />;
 
+      case "My Resume":
       case "Resume":
         return <Resume />;
 
@@ -123,13 +148,13 @@ function App() {
     }
   };
 
-  // Authenticated application
   return (
     <AppLayout
       activePage={activePage}
       onNavigate={setActivePage}
-      onLogout={handleLogout}
+      backendStatus={backendStatus}
       user={user}
+      onLogout={handleLogout}
     >
       {renderPage()}
     </AppLayout>
