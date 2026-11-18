@@ -1,3 +1,9 @@
+import os
+from app.routers.auth import router as auth_router
+import json
+import tempfile
+from app.core.dependencies import get_current_user
+from app.models import User
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.responses import FileResponse
@@ -45,6 +51,8 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+app.include_router(auth_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -181,18 +189,22 @@ async def upload_resume(file: UploadFile = File(...)):
 @app.get("/jobs")
 def get_jobs(
     search: str = "",
-    limit: int = 20
+    limit: int = 20,
+    current_user: User = Depends(get_current_user)
 ):
+    try:
+        jobs = fetch_jobs(search=search, limit=limit)
 
-    jobs = fetch_jobs(
-        search=search,
-        limit=limit
-    )
+        return {
+            "count": len(jobs),
+            "jobs": jobs
+        }
 
-    return {
-        "count": len(jobs),
-        "jobs": jobs
-    }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Unable to fetch jobs: {str(exc)}"
+        ) from exc
 
 
 @app.post("/jobs/match")

@@ -1,28 +1,54 @@
+
 from pypdf import PdfReader
 from io import BytesIO
 
 
 def extract_resume_text(file_bytes: bytes) -> str:
     """
-    Extract text from a PDF resume.
+    Extract readable text from an uploaded PDF resume.
     """
+
+    if not file_bytes:
+        raise ValueError("Uploaded PDF is empty.")
 
     try:
         pdf_file = BytesIO(file_bytes)
-        reader = PdfReader(pdf_file)
+        reader = PdfReader(pdf_file, strict=False)
 
-        text = ""
+        if reader.is_encrypted:
+            raise ValueError(
+                "Password-protected PDFs are not supported."
+            )
 
-        for page in reader.pages:
-            page_text = page.extract_text()
+        extracted_pages = []
 
-            if page_text:
-                text += page_text + "\n"
+        for page_number, page in enumerate(reader.pages, start=1):
+            try:
+                page_text = page.extract_text()
 
-        return clean_resume_text(text)
+                if page_text:
+                    extracted_pages.append(page_text)
+
+            except Exception as error:
+                print(
+                    f"Could not extract page {page_number}: {error}"
+                )
+
+        text = "\n".join(extracted_pages)
+
+        cleaned_text = clean_resume_text(text)
+
+        if not cleaned_text:
+            raise ValueError(
+                "No readable text found. The PDF may contain scanned images."
+            )
+
+        return cleaned_text
 
     except Exception as error:
-        raise ValueError(f"Unable to read PDF: {str(error)}")
+        raise ValueError(
+            f"Unable to read PDF: {str(error)}"
+        ) from error
 
 
 def clean_resume_text(text: str) -> str:
@@ -33,18 +59,12 @@ def clean_resume_text(text: str) -> str:
     if not text:
         return ""
 
-    # Remove excessive spaces
     lines = text.splitlines()
 
-    cleaned_lines = []
+    cleaned_lines = [
+        line.strip()
+        for line in lines
+        if line.strip()
+    ]
 
-    for line in lines:
-        line = line.strip()
-
-        if line:
-            cleaned_lines.append(line)
-
-    # Join lines while preserving readability
-    cleaned_text = "\n".join(cleaned_lines)
-
-    return cleaned_text.strip()
+    return "\n".join(cleaned_lines).strip()

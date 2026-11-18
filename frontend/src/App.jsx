@@ -2,13 +2,15 @@
 import { useEffect, useState } from "react";
 
 import AppLayout from "./components/layout/AppLayout";
+import AuthPage from "./components/auth/AuthPage";
+
 import Dashboard from "./pages/Dashboard";
 import FindJobs from "./pages/FindJobs";
 import Resume from "./pages/Resume";
 import Applications from "./pages/Applications";
 import Settings from "./pages/Settings";
 
-import { checkBackendHealth } from "./services/api";
+import api, { checkBackendHealth } from "./services/api";
 
 function PlaceholderPage({ page, onNavigate }) {
   const descriptions = {
@@ -24,9 +26,7 @@ function PlaceholderPage({ page, onNavigate }) {
         ✦
       </div>
 
-      <h2 className="mt-5 text-2xl font-bold text-slate-900">
-        {page}
-      </h2>
+      <h2 className="mt-5 text-2xl font-bold text-slate-900">{page}</h2>
 
       <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
         {descriptions[page] || "This section is coming soon."}
@@ -46,11 +46,13 @@ function PlaceholderPage({ page, onNavigate }) {
 export default function App() {
   const [activePage, setActivePage] = useState("Dashboard");
   const [backendStatus, setBackendStatus] = useState("checking");
+  const [user, setUser] = useState(null);
+  const [authChecking, setAuthChecking] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function verifyBackend() {
+    async function initializeApp() {
       try {
         await checkBackendHealth();
 
@@ -62,14 +64,52 @@ export default function App() {
           setBackendStatus("disconnected");
         }
       }
+
+      const token = localStorage.getItem("access_token");
+
+      if (!token) {
+        if (!cancelled) {
+          setAuthChecking(false);
+        }
+        return;
+      }
+
+      try {
+        const response = await api.get("/auth/me");
+
+        if (!cancelled) {
+          setUser(response.data);
+        }
+      } catch {
+        localStorage.removeItem("access_token");
+
+        if (!cancelled) {
+          setUser(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setAuthChecking(false);
+        }
+      }
     }
 
-    verifyBackend();
+    initializeApp();
 
     return () => {
       cancelled = true;
     };
   }, []);
+
+  function handleAuthSuccess(authenticatedUser) {
+    setUser(authenticatedUser);
+    setActivePage("Dashboard");
+  }
+
+  function handleLogout() {
+    localStorage.removeItem("access_token");
+    setUser(null);
+    setActivePage("Dashboard");
+  }
 
   function renderPage() {
     switch (activePage) {
@@ -98,13 +138,46 @@ export default function App() {
     }
   }
 
+  if (authChecking) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600" />
+          <p className="mt-4 text-sm font-medium text-slate-500">
+            Checking your session...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthPage onAuthSuccess={handleAuthSuccess} />;
+  }
+
   return (
-    <AppLayout
-      activePage={activePage}
-      onNavigate={setActivePage}
-      backendStatus={backendStatus}
-    >
-      {renderPage()}
-    </AppLayout>
+    <div>
+      <div className="flex items-center justify-end gap-3 border-b border-slate-200 bg-white px-5 py-2">
+        <span className="text-sm text-slate-600">
+          Welcome, <strong>{user.name}</strong>
+        </span>
+
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+        >
+          Logout
+        </button>
+      </div>
+
+      <AppLayout
+        activePage={activePage}
+        onNavigate={setActivePage}
+        backendStatus={backendStatus}
+      >
+        {renderPage()}
+      </AppLayout>
+    </div>
   );
 }
